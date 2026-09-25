@@ -1,18 +1,24 @@
 # Bitácora automática de actividad
 
-Registra en qué trabajas durante el día sin que tengas que anotarlo, y al cerrar la jornada te manda un resumen escrito a tu bitácora de Obsidian y a tu DM de Slack.
+Registra en qué trabajas durante el día sin que lo anotes, y al cerrar la jornada escribe un resumen en tu bitácora de Obsidian y lo manda a tu DM de Slack. Sin capturas de pantalla y sin costo de API en la captura.
 
 ## Para qué sirve
 
-Al final del día uno sabe que trabajó mucho, pero no en qué exactamente. Este registro contesta tres preguntas que de otra forma quedan en la intuición:
+Contesta tres preguntas que normalmente quedan en la intuición:
 
-**¿En qué se me fue el día?** No por app, sino por trabajo real: qué documento, qué página, qué cliente. Y cuánto de eso fue tiempo frente al teclado y cuánto fue una ventana abierta sin nadie enfrente.
+- **En qué se fue el día** — no por app, sino por documento, página y cliente, separando el tiempo frente al teclado del de una ventana abierta sin nadie enfrente.
+- **Si una tarea está tomando de más** — comparada contra tus propias sesiones anteriores, no contra una expectativa inventada.
+- **Qué trabajo repetitivo vale la pena automatizar** — se vuelve visible cuando queda escrito día tras día.
 
-**¿Es normal que esto me tome tanto?** Con varias jornadas registradas, cada tarea se compara contra tus propias sesiones anteriores en vez de contra una expectativa inventada. Ahí es donde se nota si algo se está alargando de más, o si el tiempo se fue en veinte saltos de dos minutos en vez de en un bloque de concentración.
+Y deja la bitácora ya redactada para cuando toque reportar avance.
 
-**¿Qué de esto no debería estar haciendo yo?** El trabajo que se repite día tras día se vuelve visible cuando queda escrito, y esa es la materia prima para decidir qué vale la pena automatizar.
+## Demo
 
-Además deja una bitácora que ya está escrita cuando toca reportar avance, en vez de reconstruirla de memoria el viernes.
+Estados del ícono en la bandeja del sistema:
+
+![Estados del ícono](docs/screenshots/estados-icono.png)
+
+El color cambia con el estado porque el modo de falla real de un tracker es quedarse vivo sin guardar nada: si se ve igual que uno sano, nadie lo nota.
 
 ## Cómo funciona
 
@@ -20,41 +26,35 @@ Además deja una bitácora que ya está escrita cuando toca reportar avance, en 
 Cada minuto
      │
      ▼
-Ventana activa (Windows API)  ──►  app + título + segundos sin teclado
-     │                              sin capturas de pantalla, sin API, sin costo
+Ventana activa (Win32 API vía PowerShell)
+     ├─► proceso + título de ventana
+     └─► segundos desde el último teclado o ratón
+     │
      ▼
 SQLite local
      │
      ▼
-A las 6:00 am — cierre de jornada
+06:00 — cierre de jornada
      │
-     ├─► Reporte HTML  ──►  correo
-     │
-     └─► Una llamada a Claude  ──►  resumen narrativo
-                                         │
-                                         ├─► nota de Obsidian del día
-                                         └─► DM de Slack
+     ├─► Reporte HTML            ──► correo
+     └─► Una llamada a Claude    ──► resumen narrativo
+                                        ├─► nota del día en Obsidian
+                                        └─► DM de Slack
 ```
 
-El título de ventana identifica app, documento y hasta cliente sin modelo de por medio: `Campañas - Cliente - Google Ads - Google Chrome` dice más que cualquier clasificación automática, y no cuesta nada. La IA entra una sola vez al día, para redactar.
+El título de ventana identifica app, documento y cliente sin modelo de por medio: `Campañas - Cliente - Google Ads - Google Chrome` es más específico que cualquier clasificación automática, y cuesta cero. La IA entra una sola vez al día, solo a redactar.
 
 ---
 
-## Flujo completo
+## La jornada va de 6 a 6
 
-### Estado visible en la bandeja
+El día natural parte el trabajo real: una sesión de 22:00 a 02:00 cae en dos reportes y ninguno la describe. La jornada corre de las 06:00 a las 05:59 del día siguiente y se etiqueta con la fecha en que empezó. Se ajusta con `DAY_CUTOFF_HOUR`.
 
-El ícono cambia de color según lo que esté pasando, para que un tracker caído no se vea igual que uno sano.
+El caso límite importa: cuando el cron suena a las 06:00 en punto, lo que hay que resumir son las 24 horas anteriores, no la jornada que arranca en ese instante.
 
-![Estados del ícono](docs/screenshots/estados-icono.png)
+## Cómo se escribe en Obsidian
 
-### Jornada de 6 a 6
-
-El día natural parte el trabajo real: una sesión de 22:00 a 02:00 caería en dos reportes y ninguno la describiría. La jornada va de las 06:00 a las 05:59 del día siguiente, etiquetada con la fecha en que empezó. Se ajusta con `DAY_CUTOFF_HOUR`.
-
-### Resumen al cierre
-
-El resumen se escribe entre marcadores propios dentro de la nota del día, así que convive con lo que ya viva ahí de otras fuentes sin pisarlo:
+El resumen vive entre marcadores propios dentro de la nota del día, así que convive con lo que ya esté ahí de otras fuentes sin pisarlo:
 
 ```markdown
 ## ⏱️ Tiempo por actividad
@@ -69,20 +69,35 @@ El resumen se escribe entre marcadores propios dentro de la nota del día, así 
 <!-- screen-tracker:fin -->
 ```
 
+## Los dos motores de captura
+
+| | `window` | `vision` |
+|---|---|---|
+| Qué lee | Título de ventana y proceso | Captura de pantalla analizada por un modelo |
+| Costo | Cero | Una llamada por captura |
+| Precisión de la app | Exacta, nombre canónico | Texto libre, se fragmenta en variantes |
+| Identifica cliente | Sí, si el título lo trae | Rara vez |
+| Ve contenido | No | Sí |
+
+La columna `source` distingue el origen de cada fila porque `productive` significa cosas distintas en cada motor: en `window` es que hubo teclado o ratón, en `vision` era el juicio del modelo. Sumarlas sin distinguir daría números falsos.
+
+## Cómo se mide el tiempo
+
+De la distancia real entre capturas consecutivas, no del conteo de filas por el intervalo — con el tracker caído seis horas y diez capturas sueltas, contar filas reportaría diez minutos de trabajo. Los huecos mayores a `MAX_GAP_MINUTES` se cortan: ahí la máquina estaba suspendida.
+
+## Privacidad
+
+No se guarda ninguna imagen. El modo `window` no toma capturas: lee el título de la ventana y ya. El modo `vision` escribía el jpg, lo mandaba a la API y lo borraba en la misma operación. Todo vive en una base SQLite local.
+
 ---
 
 ## Setup
 
 ```bash
-cp .env.example .env   # llenar las claves
+cp .env.example .env
 npm install
 npm run tray           # bandeja + captura
-```
-
-Para que arranque sola con Windows, la versión empaquetada se registra por su cuenta al instalarse:
-
-```bash
-npm run build:win      # genera el instalador en dist/
+npm run build:win      # instalador con arranque automático
 ```
 
 ## Comandos
@@ -99,46 +114,29 @@ npm run build:win      # genera el instalador en dist/
 
 | Variable | Descripción |
 |---|---|
-| `CAPTURE_MODE` | `window` (título de ventana, sin costo) o `vision` (captura de pantalla + modelo) |
+| `CAPTURE_MODE` | `window` (título de ventana, sin costo) o `vision` (captura + modelo) |
 | `CAPTURE_INTERVAL_MINUTES` | Minutos entre capturas (default: `5`) |
 | `IDLE_THRESHOLD_SECONDS` | Sin teclado ni ratón por este tiempo, cuenta como inactivo (default: `120`) |
 | `DAY_CUTOFF_HOUR` | Hora de corte de la jornada (default: `6`) |
-| `MAX_GAP_MINUTES` | Hueco máximo que se cuenta como trabajo; más allá, la máquina estaba suspendida (default: `5`) |
-| `REPORT_HOUR` | Hora del cierre de jornada (default: `18`) |
+| `MAX_GAP_MINUTES` | Hueco máximo que cuenta como trabajo (default: `5`) |
+| `REPORT_HOUR` | Hora del cierre de jornada |
 | `OBSIDIAN_VAULT_PATH` | Carpeta del vault donde vive `Resumen YYYY-MM-DD.md` |
-| `SLACK_BOT_TOKEN` | Con el token, el resumen llega al DM personal; sin él, al canal del webhook |
+| `SLACK_BOT_TOKEN` | Con el token el resumen llega al DM; sin él, al canal del webhook |
 | `SLACK_USER_ID` | Usuario que recibe el DM |
-| `SLACK_WEBHOOK_URL` | Alternativa al token, publica en el canal del webhook |
-| `ANTHROPIC_API_KEY` | Solo si se usa `CAPTURE_MODE=vision` |
-| `ANALYSIS_MODEL` | Modelo para el modo visión (default: `claude-haiku-4-5`) |
+| `SLACK_WEBHOOK_URL` | Alternativa al token |
+| `ANTHROPIC_API_KEY` | Solo para `CAPTURE_MODE=vision` |
+| `ANALYSIS_MODEL` | Modelo del modo visión (default: `claude-haiku-4-5`) |
 | `EMAIL_USER` / `EMAIL_PASS` / `EMAIL_TO` | Envío del reporte HTML por correo |
 | `DB_PATH` | Base SQLite (default: `./data/tracker.db`) |
-
-## Los dos motores de captura
-
-| | `window` | `vision` |
-|---|---|---|
-| Qué lee | Título de ventana y proceso | Captura de pantalla analizada por un modelo |
-| Costo | Cero | Una llamada por captura |
-| Precisión de la app | Exacta, nombre canónico | Texto libre, se fragmenta en variantes |
-| Identifica cliente | Sí, si el título lo trae | Rara vez |
-| Ve contenido | No | Sí |
-
-El campo `source` distingue el origen de cada fila, porque `productive` significa cosas distintas en cada uno: en `window` es que hubo teclado o ratón, en `vision` era el juicio del modelo. Sumarlos sin distinguir daría números falsos.
-
-## Privacidad
-
-No se guarda ninguna imagen. El modo `window` ni siquiera toma una: lee el título de la ventana y ya. El modo `vision` escribía el jpg, lo mandaba a la API y lo borraba en la misma operación. Todo vive en una base SQLite local.
 
 ---
 
 ## Tech stack
 
-- **Node.js (ESM)** — captura programada y orquestación
-- **PowerShell + Win32 API** — ventana en primer plano y tiempo sin teclado
-- **SQLite** (`node-sqlite3-wasm`) — almacenamiento local
-- **Electron** — bandeja del sistema con supervisión del proceso
-- **electron-builder** — instalador para Windows con arranque automático
-- **Claude Code en modo headless** — una llamada al día para redactar el resumen
-- **Slack Web API** — entrega del resumen al DM
-- **Nodemailer** — reporte HTML por correo
+- **PowerShell + Win32 API** — `GetForegroundWindow` y `GetLastInputInfo` dan app, documento y tiempo inactivo sin dependencias nativas ni permisos especiales
+- **Node.js (ESM)** — la captura y la orquestación son lógica simple, no hace falta framework
+- **SQLite** (`node-sqlite3-wasm`) — base local sin binario nativo que compilar por plataforma
+- **Electron** — la bandeja supervisa el proceso hijo y lo relanza con backoff; sin eso, una caída deja el ícono visible y la captura muerta
+- **electron-builder** — instalador de Windows que se registra solo en el arranque
+- **Claude Code en modo headless** — una llamada al día para redactar, autenticada con suscripción en vez de crédito de API
+- **Slack Web API** — `conversations.open` para el DM directo, no un webhook a canal fijo
