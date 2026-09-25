@@ -1,26 +1,51 @@
 {
   "name": "screen-tracker",
   "version": "1.0.0",
-  "description": "Automatic screen tracker with AI analysis and daily Slack reports",
-  "main": "src/index.js",
+  "description": "Automatic screen tracker with AI analysis and daily email reports",
+  "author": "Janette Gopar <janette.gopar@detectasecurity.io>",
+  "main": "src/tray.cjs",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
     "report": "node src/report.js",
     "dev": "node --watch src/index.js",
-    "tray": "electron src/tray.cjs"
+    "tray": "node scripts/run-tray.cjs",
+    "build:win": "electron-builder --win"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "auto-launch": "^5.0.6",
     "dotenv": "^16.4.5",
-    "electron": "^41.3.0",
     "node-cron": "^3.0.3",
     "node-sqlite3-wasm": "^0.8.0",
     "nodemailer": "^8.0.6",
     "screenshot-desktop": "^1.12.7",
     "systray2": "^2.1.4"
   },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1"
+  },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "build": {
+    "appId": "com.gopar.screen-tracker",
+    "productName": "Screen Tracker",
+    "asar": false,
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "runAfterFinish": true
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ]
   }
 }
