@@ -2,6 +2,18 @@
 
 Registra en qué trabajas durante el día sin que tengas que anotarlo, y al cerrar la jornada te manda un resumen escrito a tu bitácora de Obsidian y a tu DM de Slack.
 
+## Para qué sirve
+
+Al final del día uno sabe que trabajó mucho, pero no en qué exactamente. Este registro contesta tres preguntas que de otra forma quedan en la intuición:
+
+**¿En qué se me fue el día?** No por app, sino por trabajo real: qué documento, qué página, qué cliente. Y cuánto de eso fue tiempo frente al teclado y cuánto fue una ventana abierta sin nadie enfrente.
+
+**¿Es normal que esto me tome tanto?** Con varias jornadas registradas, cada tarea se compara contra tus propias sesiones anteriores en vez de contra una expectativa inventada. Ahí es donde se nota si algo se está alargando de más, o si el tiempo se fue en veinte saltos de dos minutos en vez de en un bloque de concentración.
+
+**¿Qué de esto no debería estar haciendo yo?** El trabajo que se repite día tras día se vuelve visible cuando queda escrito, y esa es la materia prima para decidir qué vale la pena automatizar.
+
+Además deja una bitácora que ya está escrita cuando toca reportar avance, en vez de reconstruirla de memoria el viernes.
+
 ## Cómo funciona
 
 ```
@@ -24,7 +36,7 @@ A las 6:00 am — cierre de jornada
                                          └─► DM de Slack
 ```
 
-El título de ventana identifica app, documento y hasta cliente sin modelo de por medio: `Campañas - LealUp - Google Ads - Google Chrome` dice más que cualquier clasificación automática, y no cuesta nada. La IA entra una sola vez al día, para redactar.
+El título de ventana identifica app, documento y hasta cliente sin modelo de por medio: `Campañas - Cliente - Google Ads - Google Chrome` dice más que cualquier clasificación automática, y no cuesta nada. La IA entra una sola vez al día, para redactar.
 
 ---
 
@@ -49,8 +61,8 @@ El resumen se escribe entre marcadores propios dentro de la nota del día, así 
 <!-- screen-tracker:inicio -->
 🕐 1h 10min registrados · ⚡ 1h 10min de tiempo activo (100%)
 
-📝 Casi todo el bloque de código ocurrió dentro del workspace
-   `google-ads-assistant-bot` (≈37 min), repartido entre documentos distintos.
+📝 Casi todo el bloque de código ocurrió dentro de un mismo workspace
+   (≈37 min), repartido entre documentos distintos.
 
 ⚡ 70 min de actividad continua, pero muy fragmentados: 20 ventanas distintas
    y solo una superó los 10 minutos seguidos.
