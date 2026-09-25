@@ -5,6 +5,7 @@ import { captureWindow }      from './capture-window.js';
 import { analyzeScreenshot }  from './analyze.js';
 import { saveSnapshot }       from './db.js';
 import { generateDailyReport } from './report.js';
+import { generateDailySummary } from './daily-summary.js';
 import { openDailyReportInBrowser } from './report-html.js';
 
 const INTERVAL    = Number(process.env.CAPTURE_INTERVAL_MINUTES) || 5;
@@ -70,6 +71,14 @@ async function runReport() {
     if (result) await openDailyReportInBrowser(null, true); // true = emailMode
   } catch (err) {
     console.error('❌  Error en reporte:', err.message);
+  }
+
+  // Va aparte del reporte por correo: si el resumen narrativo falla, el reporte
+  // de siempre ya se mando.
+  try {
+    await generateDailySummary();
+  } catch (err) {
+    console.error('❌  Error en resumen diario:', err.message);
   }
 }
 
