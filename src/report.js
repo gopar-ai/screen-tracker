@@ -1,48 +1,52 @@
 import { getSnapshotsForDate, saveDailyReport } from './db.js';
 import { openDailyReportInBrowser } from './report-html.js';
+import { aggregate, labelsFor } from './aggregate.js';
 import 'dotenv/config';
 
-const INTERVAL = Number(process.env.CAPTURE_INTERVAL_MINUTES) || 5;
+const hhmm = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}min`;
 
 export async function generateDailyReport(dateStr) {
   const today = dateStr || new Date().toISOString().slice(0, 10);
   const snapshots = getSnapshotsForDate(today);
-  if (!snapshots.length) { console.log(`📭  No snapshots for ${today}`); return null; }
+  if (!snapshots.length) { console.log(`📭  Sin capturas para ${today}`); return null; }
 
-  const totalMinutes = snapshots.length * INTERVAL;
-  const prodMinutes  = snapshots.filter(s => s.productive === 1).length * INTERVAL;
-  const pct = Math.round((prodMinutes / totalMinutes) * 100);
+  const data = aggregate(snapshots);
+  if (!data.count) { console.log(`📭  Sin capturas utilizables para ${today}`); return null; }
+  const label = labelsFor(data.engine);
 
-  const appMap = {}, catMap = {}, taskMap = {};
-  for (const s of snapshots) {
-    const app = s.app || 'Unknown';
-    appMap[app] = appMap[app] || { minutes: 0, productive: s.productive === 1 };
-    appMap[app].minutes += INTERVAL;
-    let cat = 'other';
-    try { cat = JSON.parse(s.raw_analysis || '{}').category || 'other'; } catch {}
-    catMap[cat] = (catMap[cat] || 0) + INTERVAL;
-    const t = s.task || 'Unknown';
-    taskMap[t] = (taskMap[t] || 0) + INTERVAL;
-  }
-
-  const appLines  = Object.entries(appMap).sort((a,b)=>b[1].minutes-a[1].minutes).map(([a,d])=>`  • ${a}: ${d.minutes} min ${d.productive?'✅':'🎮'}`).join('\n');
-  const catLines  = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).map(([c,m])=>`  • ${c}: ${m} min`).join('\n');
-  const taskLines = Object.entries(taskMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([t,m])=>`  • ${t} (${m} min)`).join('\n');
+  const appLines = data.apps
+    .map((a) => `  • ${a.name}: ${hhmm(a.minutes)} (${a.activePct}% ${label.active.toLowerCase()})`)
+    .join('\n');
+  const catLines = data.categories
+    .filter((c) => c.name !== 'sin categoria')
+    .map((c) => `  • ${c.name}: ${hhmm(c.minutes)}`)
+    .join('\n');
+  const taskLines = data.tasks.slice(0, 5)
+    .map((t) => `  • ${t.name} (${hhmm(t.minutes)})`)
+    .join('\n');
 
   const summary = [
-    `📊 *Screen Tracker — Daily Report ${today}*`, '',
-    `🕐 *Total tracked:* ${totalMinutes} min (${snapshots.length} snapshots)`,
-    `⚡ *Productivo:* ${prodMinutes} min (${pct}%)`,
-    `🎮 *Distracción:* ${totalMinutes - prodMinutes} min (${100 - pct}%)`, '',
-    `*🖥️ Por App:*`, appLines, '',
-    `*🗂️ Por Categoría:*`, catLines, '',
-    `*📝 Top Tareas:*`, taskLines, '',
-    pct >= 70 ? '🔥 *Gran día, lo lograste!*' : pct >= 50 ? '👍 *Día decente. Mañana más!*' : '⚠️ *Muchas distracciones hoy. Mañana es nuevo día!*'
-  ].join('\n');
+    `📊 *Screen Tracker — ${today}*`, '',
+    `🕐 *Tiempo registrado:* ${hhmm(data.totalMinutes)} (${data.count} capturas)`,
+    `⚡ *${label.active}:* ${hhmm(data.activeMinutes)} (${data.pct}%)`,
+    `💤 *${label.inactive}:* ${hhmm(data.idleMinutes)} (${100 - data.pct}%)`,
+    `📐 *${label.ratio}* medida por ${label.note}.`,
+    data.discarded ? `🗑️ ${data.discarded} capturas descartadas (analisis fallido).` : '',
+    '',
+    '*🖥️ Por App:*', appLines,
+    catLines ? `\n*🗂️ Por Categoria:*\n${catLines}` : '',
+    '', '*📝 En que estuviste:*', taskLines,
+  ].filter((line) => line !== '').join('\n');
 
-  saveDailyReport({ report_date: today, total_minutes: totalMinutes, prod_minutes: prodMinutes, summary, sent_to_slack: 0 });
+  saveDailyReport({
+    report_date: today,
+    total_minutes: data.totalMinutes,
+    prod_minutes: data.activeMinutes,
+    summary,
+    sent_to_slack: 0,
+  });
   console.log('\n' + summary + '\n');
-  return { today, totalMinutes, prodMinutes, pct, summary };
+  return { today, totalMinutes: data.totalMinutes, prodMinutes: data.activeMinutes, pct: data.pct, summary };
 }
 
 if (process.argv[1].endsWith('report.js')) {

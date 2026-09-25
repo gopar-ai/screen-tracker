@@ -3,6 +3,11 @@
 # contaría como tres horas de trabajo aunque nadie estuviera ahí.
 $ErrorActionPreference = 'Stop'
 
+# Sin esto PowerShell escribe en la codificacion de consola (CP850 en Windows en
+# espanol) y Node lo lee como UTF-8: los titulos con acentos llegan rotos a la
+# base, con caracteres de reemplazo en vez de "Bitacora" o "retencion".
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 Add-Type @"
 using System;
 using System.Text;

@@ -3,9 +3,13 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import { sendReportByEmail } from './email.js';
+import { aggregate, labelsFor } from './aggregate.js';
 import 'dotenv/config';
 
-const INTERVAL = Number(process.env.CAPTURE_INTERVAL_MINUTES) || 5;
+const hhmm = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}min`;
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
+));
 
 export async function openDailyReportInBrowser(dateStr, emailMode = false) {
   const today = dateStr || new Date().toISOString().slice(0, 10);
@@ -34,43 +38,33 @@ export async function openDailyReportInBrowser(dateStr, emailMode = false) {
     return;
   }
 
-  const totalMinutes = snapshots.length * INTERVAL;
-  const prodMinutes = snapshots.filter(s => s.productive === 1).length * INTERVAL;
-  const pct = Math.round((prodMinutes / totalMinutes) * 100);
-
-  const appMap = {}, catMap = {}, taskMap = {};
-  for (const s of snapshots) {
-    const app = s.app || 'Unknown';
-    appMap[app] = appMap[app] || { minutes: 0, productive: s.productive === 1 };
-    appMap[app].minutes += INTERVAL;
-    let cat = 'other';
-    try { cat = JSON.parse(s.raw_analysis || '{}').category || 'other'; } catch {}
-    catMap[cat] = (catMap[cat] || 0) + INTERVAL;
-    const t = s.task || 'Unknown';
-    taskMap[t] = (taskMap[t] || 0) + INTERVAL;
+  const data = aggregate(snapshots);
+  if (!data.count) {
+    console.log(`📭  Sin capturas utilizables para ${today}`);
+    return;
   }
+  const label = labelsFor(data.engine);
+  const { totalMinutes, activeMinutes, idleMinutes, pct } = data;
 
-  const appRows = Object.entries(appMap)
-    .sort((a, b) => b[1].minutes - a[1].minutes)
-    .map(([app, d]) => `
+  const appRows = data.apps.map((a) => `
       <tr>
-        <td>${app}</td>
-        <td>${d.minutes} min</td>
-        <td>${d.productive ? '<span class="badge prod">✅ Productivo</span>' : '<span class="badge dist">🎮 Distracción</span>'}</td>
+        <td>${escapeHtml(a.name)}</td>
+        <td>${hhmm(a.minutes)}</td>
+        <td><span class="badge ${a.activePct >= 50 ? 'prod' : 'dist'}">${a.activePct}% ${escapeHtml(label.active.toLowerCase())}</span></td>
       </tr>`).join('');
 
-  const catRows = Object.entries(catMap)
-    .sort((a, b) => b[1] - a[1])
-    .map(([cat, mins]) => `
-      <tr><td>${cat}</td><td>${mins} min</td></tr>`).join('');
+  const catRows = data.categories
+    .filter((c) => c.name !== 'sin categoria')
+    .map((c) => `
+      <tr><td>${escapeHtml(c.name)}</td><td>${hhmm(c.minutes)}</td></tr>`).join('');
 
-  const taskRows = Object.entries(taskMap)
-    .sort((a, b) => b[1] - a[1]).slice(0, 5)
-    .map(([task, mins]) => `
-      <tr><td>${task}</td><td>${mins} min</td></tr>`).join('');
+  const taskRows = data.tasks.slice(0, 8).map((t) => `
+      <tr><td>${escapeHtml(t.name)}</td><td>${hhmm(t.minutes)}</td></tr>`).join('');
 
-  const emoji = pct >= 70 ? '🔥' : pct >= 50 ? '👍' : '⚠️';
-  const msg = pct >= 70 ? 'Gran día, lo lograste!' : pct >= 50 ? 'Día decente. Mañana más!' : 'Muchas distracciones. Mañana es nuevo día!';
+  const topApp = data.apps[0];
+  const msg = topApp
+    ? `Donde mas estuviste: ${escapeHtml(topApp.name)} — ${hhmm(topApp.minutes)}`
+    : 'Sin actividad registrada';
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -107,26 +101,29 @@ export async function openDailyReportInBrowser(dateStr, emailMode = false) {
 
     <div class="stats">
       <div class="stat">
-        <div class="value">${totalMinutes}<span style="font-size:1rem"> min</span></div>
-        <div class="label">Total tracked</div>
+        <div class="value">${hhmm(totalMinutes)}</div>
+        <div class="label">Tiempo registrado</div>
       </div>
       <div class="stat">
         <div class="value">${pct}<span style="font-size:1rem">%</span></div>
-        <div class="label">Productividad</div>
+        <div class="label">${label.ratio}</div>
       </div>
       <div class="stat">
-        <div class="value">${snapshots.length}</div>
-        <div class="label">Snapshots</div>
+        <div class="value">${data.count}</div>
+        <div class="label">Capturas</div>
       </div>
     </div>
 
     <div class="card">
-      <h2>Productividad</h2>
+      <h2>${label.ratio}</h2>
       <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.9rem;">
-        <span>⚡ ${prodMinutes} min productivos</span>
-        <span>🎮 ${totalMinutes - prodMinutes} min distracción</span>
+        <span>⚡ ${hhmm(activeMinutes)} ${label.active.toLowerCase()}</span>
+        <span>💤 ${hhmm(idleMinutes)} ${label.inactive.toLowerCase()}</span>
       </div>
       <div class="progress"><div class="progress-bar" style="width:${pct}%"></div></div>
+      <p style="margin-top:12px; font-size:0.8rem; color:#64748b;">
+        Medido por ${label.note}. El tiempo sale de la distancia real entre capturas, no del conteo.${data.discarded ? ` Se descartaron ${data.discarded} capturas con analisis fallido.` : ''}
+      </p>
     </div>
 
     <div class="card">
@@ -140,11 +137,11 @@ export async function openDailyReportInBrowser(dateStr, emailMode = false) {
     </div>
 
     <div class="card">
-      <h2>📝 Top Tareas</h2>
+      <h2>📝 En qué estuviste</h2>
       <table>${taskRows}</table>
     </div>
 
-    <div class="conclusion">${emoji} ${msg}</div>
+    <div class="conclusion">${msg}</div>
   </div>
 </body>
 </html>`;

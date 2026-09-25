@@ -48,8 +48,10 @@ const insertSnapshot = db.prepare(`
   INSERT INTO snapshots (captured_at, screenshot, app, task, productive, confidence, raw_analysis, idle_seconds, source)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
+// 'localtime' importa: las marcas se guardan en UTC, y sin convertir, todo lo
+// trabajado despues de las 18:00 en CDMX caia en el reporte del dia siguiente.
 const getSnapshotsByDate = db.prepare(`
-  SELECT * FROM snapshots WHERE date(captured_at) = ? ORDER BY captured_at ASC
+  SELECT * FROM snapshots WHERE date(captured_at, 'localtime') = ? ORDER BY captured_at ASC
 `);
 const upsertDailyReport = db.prepare(`
   INSERT INTO daily_reports (report_date, total_minutes, prod_minutes, summary, sent_to_slack)
