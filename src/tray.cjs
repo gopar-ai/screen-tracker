@@ -78,14 +78,26 @@ function minutesSinceLastWrite() {
   }
 }
 
-function createTrayIcon() {
+// El ojo cambia de color con el estado. Antes el aviso de "sin guardar" solo se
+// veia abriendo el menu, que es justo como paso desapercibido que el tracker
+// llevaba tres meses muerto: en la barra se veia igual de normal.
+const ICON_COLORS = {
+  activo:      [255, 255, 255],
+  reiniciando: [232, 163,  61],
+  alerta:      [229,  72,  77],
+  pausado:     [138, 152, 168],
+};
+
+function createTrayIcon([r, g, b]) {
   const size = 16;
   const data = Buffer.alloc(size * size * 4, 0);
 
-  const set = (x, y, r, g, b, a = 255) => {
+  // createFromBitmap espera BGRA, no RGBA. Con el icono blanco de antes daba
+  // igual; en cuanto hay color, invertir los canales cambia el tono.
+  const set = (x, y) => {
     if (x < 0 || x >= size || y < 0 || y >= size) return;
     const i = (y * size + x) * 4;
-    data[i] = r; data[i+1] = g; data[i+2] = b; data[i+3] = a;
+    data[i] = b; data[i+1] = g; data[i+2] = r; data[i+3] = 255;
   };
 
   const eyePixels = [
@@ -94,13 +106,13 @@ function createTrayIcon() {
     [3,7],[3,8],[12,7],[12,8],
     [4,6],[11,6],[4,9],[11,9]
   ];
-  eyePixels.forEach(([x, y]) => set(x, y, 255, 255, 255));
+  eyePixels.forEach(([x, y]) => set(x, y));
 
   const pupilPixels = [
     [7,7],[8,7],[7,8],[8,8],
     [6,7],[9,7],[7,6],[8,6],[7,9],[8,9],[6,8],[9,8]
   ];
-  pupilPixels.forEach(([x, y]) => set(x, y, 255, 255, 255));
+  pupilPixels.forEach(([x, y]) => set(x, y));
 
   return nativeImage.createFromBitmap(data, { width: size, height: size });
 }
@@ -162,19 +174,29 @@ function stopTracker() {
   updateMenu();
 }
 
-function statusLabel() {
-  if (restartTimer) return '🟠 Reiniciando…';
-  if (!isTrackerRunning()) return '🔴 Pausado';
+// Estado y etiqueta salen del mismo lugar para que el icono y el menu no puedan
+// contradecirse.
+function trackerState() {
+  if (restartTimer) return { key: 'reiniciando', label: '🟠 Reiniciando…' };
+  if (!isTrackerRunning()) return { key: 'pausado', label: '🔴 Pausado' };
   const stale = minutesSinceLastWrite();
   if (stale !== null && stale >= STALE_AFTER_MIN) {
-    return `⚠️ Activo, sin guardar (${stale} min)`;
+    return { key: 'alerta', label: `⚠️ Activo, sin guardar (${stale} min)` };
   }
-  return '🟢 Activo';
+  return { key: 'activo', label: '🟢 Activo' };
 }
+
+let iconKey = null;
 
 function updateMenu() {
   const running = isTrackerRunning();
-  const status = statusLabel();
+  const { key, label: status } = trackerState();
+
+  if (key !== iconKey) {
+    tray.setImage(createTrayIcon(ICON_COLORS[key]));
+    iconKey = key;
+  }
+
   tray.setToolTip(`Screen Tracker — ${status.replace(/^\S+\s/, '')}`);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: status, enabled: false },
@@ -212,7 +234,8 @@ function updateMenu() {
 
 app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock?.hide();
-  tray = new Tray(createTrayIcon());
+  tray = new Tray(createTrayIcon(ICON_COLORS.activo));
+  iconKey = 'activo';
   await setupAutoStart();
   updateMenu();
   startTracker();
