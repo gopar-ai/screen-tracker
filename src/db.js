@@ -62,6 +62,11 @@ const upsertDailyReport = db.prepare(`
     summary       = excluded.summary,
     sent_to_slack = excluded.sent_to_slack
 `);
+// Por rango y no por fecha: la jornada va de las 06:00 de un dia a las 06:00 del
+// siguiente, asi que no cabe en un date() de un solo dia.
+const getSnapshotsInRange = db.prepare(`
+  SELECT * FROM snapshots WHERE captured_at >= ? AND captured_at < ? ORDER BY captured_at ASC
+`);
 const getReport = db.prepare(`SELECT * FROM daily_reports WHERE report_date = ?`);
 
 export const saveSnapshot = (d) => insertSnapshot.run([
@@ -69,6 +74,7 @@ export const saveSnapshot = (d) => insertSnapshot.run([
   d.idle_seconds ?? null, d.source ?? 'vision',
 ]);
 export const getSnapshotsForDate = (date) => getSnapshotsByDate.all([date]);
+export const getSnapshotsForRange = (startIso, endIso) => getSnapshotsInRange.all([startIso, endIso]);
 export const saveDailyReport = (d) => upsertDailyReport.run([
   d.report_date, d.total_minutes, d.prod_minutes, d.summary, d.sent_to_slack,
 ]);

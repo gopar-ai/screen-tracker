@@ -1,4 +1,5 @@
-import { getSnapshotsForDate } from './db.js';
+import { getSnapshotsForRange } from './db.js';
+import { currentJornada, closingJornada, jornadaForDate } from './jornada.js';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
@@ -12,26 +13,15 @@ const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => (
 ));
 
 export async function openDailyReportInBrowser(dateStr, emailMode = false) {
-  const today = dateStr || new Date().toISOString().slice(0, 10);
-  const WORK_START = Number(process.env.WORK_START_HOUR) || 9;
-  const WORK_END = Number(process.env.WORK_END_HOUR) || 18;
+  // Antes recortaba a horario laboral (9 a 18). Con la jornada de 6 a 6 eso se
+  // contradecia y escondia justo el trabajo de tarde y noche, que es cuando mas
+  // actividad hay en este registro.
+  const ventana = dateStr
+    ? jornadaForDate(dateStr)
+    : (emailMode ? closingJornada() : currentJornada());
+  const today = ventana.fecha;
 
-  let snapshots = getSnapshotsForDate(today);
-
-  if (emailMode) {
-    // Filtrar solo horario laboral para el reporte por email
-    snapshots = snapshots.filter(s => {
-      const hour = new Date(s.captured_at).getHours();
-      return hour >= WORK_START && hour < WORK_END;
-    });
-  } else {
-    // Reporte ahora: desde las 9am hasta ahorita
-    const now = new Date();
-    snapshots = snapshots.filter(s => {
-      const hour = new Date(s.captured_at).getHours();
-      return hour >= WORK_START && new Date(s.captured_at) <= now;
-    });
-  }
+  const snapshots = getSnapshotsForRange(ventana.start.toISOString(), ventana.end.toISOString());
 
   if (!snapshots.length) {
     console.log(`📭  No snapshots para ${today}`);

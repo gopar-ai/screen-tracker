@@ -64,10 +64,12 @@ async function runCapture() {
   }
 }
 
+// Corre al cierre de la jornada, asi que resume las 24 horas que acaban de
+// terminar, no la jornada que arranca en ese mismo instante.
 async function runReport() {
-  console.log('\n📊  Generando reporte diario...');
+  console.log('\n📊  Cierre de jornada...');
   try {
-    const result = await generateDailyReport();
+    const result = await generateDailyReport(null, { closing: true });
     if (result) await openDailyReportInBrowser(null, true); // true = emailMode
   } catch (err) {
     console.error('❌  Error en reporte:', err.message);
@@ -76,7 +78,7 @@ async function runReport() {
   // Va aparte del reporte por correo: si el resumen narrativo falla, el reporte
   // de siempre ya se mando.
   try {
-    await generateDailySummary();
+    await generateDailySummary(null, { closing: true });
   } catch (err) {
     console.error('❌  Error en resumen diario:', err.message);
   }

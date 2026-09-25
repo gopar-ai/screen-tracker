@@ -2,8 +2,9 @@ import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { getSnapshotsForDate } from './db.js';
+import { getSnapshotsForRange } from './db.js';
 import { aggregate, labelsFor } from './aggregate.js';
+import { currentJornada, closingJornada, jornadaForDate, describeWindow } from './jornada.js';
 import { sendSlackReport } from './slack.js';
 import 'dotenv/config';
 
@@ -120,9 +121,19 @@ async function sendDirectMessage(text) {
   console.log('📨  Enviado al DM de Slack.');
 }
 
-export async function generateDailySummary(dateStr) {
-  const fecha = dateStr || new Date().toLocaleDateString('sv-SE'); // sv-SE da YYYY-MM-DD local
-  const snapshots = getSnapshotsForDate(fecha);
+/**
+ * @param {string} [dateStr] jornada concreta (YYYY-MM-DD)
+ * @param {{closing?: boolean}} [opts] closing: la jornada que acaba de cerrar,
+ *        que es lo que pide el cron del corte. Sin esto, la jornada en curso.
+ */
+export async function generateDailySummary(dateStr, opts = {}) {
+  const ventana = dateStr
+    ? jornadaForDate(dateStr)
+    : (opts.closing ? closingJornada() : currentJornada());
+  const { fecha } = ventana;
+
+  console.log(`📅  Jornada ${describeWindow(ventana)}`);
+  const snapshots = getSnapshotsForRange(ventana.start.toISOString(), ventana.end.toISOString());
   if (!snapshots.length) { console.log(`📭  Sin capturas para ${fecha}`); return null; }
 
   const data = aggregate(snapshots);
@@ -141,7 +152,10 @@ export async function generateDailySummary(dateStr) {
   console.log('🤖  Pidiendo el resumen a Claude (suscripcion, sin API)...');
   const narrativa = await askClaude(buildPrompt(label), payload);
 
-  const encabezado = `🕐 ${hhmm(data.totalMinutes)} registrados · ⚡ ${hhmm(data.activeMinutes)} de ${label.active.toLowerCase()} (${data.pct}%)`;
+  const encabezado = [
+    `🕐 ${hhmm(data.totalMinutes)} registrados · ⚡ ${hhmm(data.activeMinutes)} de ${label.active.toLowerCase()} (${data.pct}%)`,
+    `_Jornada de ${ventana.cutoffHour}:00 a ${ventana.cutoffHour}:00 del día siguiente._`,
+  ].join('\n');
   const bloque = `${encabezado}\n\n${narrativa}`;
 
   let destinoNota = 'sin vault configurado';

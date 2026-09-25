@@ -1,13 +1,17 @@
-import { getSnapshotsForDate, saveDailyReport } from './db.js';
+import { getSnapshotsForRange, saveDailyReport } from './db.js';
 import { openDailyReportInBrowser } from './report-html.js';
 import { aggregate, labelsFor } from './aggregate.js';
+import { currentJornada, closingJornada, jornadaForDate } from './jornada.js';
 import 'dotenv/config';
 
 const hhmm = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}min`;
 
-export async function generateDailyReport(dateStr) {
-  const today = dateStr || new Date().toISOString().slice(0, 10);
-  const snapshots = getSnapshotsForDate(today);
+export async function generateDailyReport(dateStr, opts = {}) {
+  const ventana = dateStr
+    ? jornadaForDate(dateStr)
+    : (opts.closing ? closingJornada() : currentJornada());
+  const today = ventana.fecha;
+  const snapshots = getSnapshotsForRange(ventana.start.toISOString(), ventana.end.toISOString());
   if (!snapshots.length) { console.log(`📭  Sin capturas para ${today}`); return null; }
 
   const data = aggregate(snapshots);
@@ -28,6 +32,7 @@ export async function generateDailyReport(dateStr) {
   const summary = [
     `📊 *Screen Tracker — ${today}*`, '',
     `🕐 *Tiempo registrado:* ${hhmm(data.totalMinutes)} (${data.count} capturas)`,
+    `📅 *Jornada:* ${ventana.cutoffHour}:00 a ${ventana.cutoffHour}:00 del dia siguiente`,
     `⚡ *${label.active}:* ${hhmm(data.activeMinutes)} (${data.pct}%)`,
     `💤 *${label.inactive}:* ${hhmm(data.idleMinutes)} (${100 - data.pct}%)`,
     `📐 *${label.ratio}* medida por ${label.note}.`,
