@@ -32,9 +32,21 @@ db.exec(`
   );
 `);
 
+// Las filas anteriores a estas columnas vienen del motor de visión, donde
+// `productive` era el juicio de un modelo. En el motor de ventanas significa
+// "había teclado o ratón": son dos cosas distintas y no deben sumarse sin
+// distinguirlas, de ahí `source`.
+const existingColumns = new Set(db.all('PRAGMA table_info(snapshots)').map((c) => c.name));
+if (!existingColumns.has('idle_seconds')) {
+  db.exec('ALTER TABLE snapshots ADD COLUMN idle_seconds INTEGER');
+}
+if (!existingColumns.has('source')) {
+  db.exec("ALTER TABLE snapshots ADD COLUMN source TEXT NOT NULL DEFAULT 'vision'");
+}
+
 const insertSnapshot = db.prepare(`
-  INSERT INTO snapshots (captured_at, screenshot, app, task, productive, confidence, raw_analysis)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO snapshots (captured_at, screenshot, app, task, productive, confidence, raw_analysis, idle_seconds, source)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const getSnapshotsByDate = db.prepare(`
   SELECT * FROM snapshots WHERE date(captured_at) = ? ORDER BY captured_at ASC
@@ -52,6 +64,7 @@ const getReport = db.prepare(`SELECT * FROM daily_reports WHERE report_date = ?`
 
 export const saveSnapshot = (d) => insertSnapshot.run([
   d.captured_at, d.screenshot, d.app, d.task, d.productive, d.confidence, d.raw_analysis,
+  d.idle_seconds ?? null, d.source ?? 'vision',
 ]);
 export const getSnapshotsForDate = (date) => getSnapshotsByDate.all([date]);
 export const saveDailyReport = (d) => upsertDailyReport.run([

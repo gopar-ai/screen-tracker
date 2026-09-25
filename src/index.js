@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import 'dotenv/config';
 import { captureScreen }      from './capture.js';
+import { captureWindow }      from './capture-window.js';
 import { analyzeScreenshot }  from './analyze.js';
 import { saveSnapshot }       from './db.js';
 import { generateDailyReport } from './report.js';
@@ -8,23 +9,54 @@ import { openDailyReportInBrowser } from './report-html.js';
 
 const INTERVAL    = Number(process.env.CAPTURE_INTERVAL_MINUTES) || 5;
 const REPORT_HOUR = Number(process.env.REPORT_HOUR) || 18;
+const CAPTURE_MODE = (process.env.CAPTURE_MODE || 'window').toLowerCase();
+
+// El título de ventana identifica app, documento y hasta cliente sin costo ni
+// API. La visión queda disponible para casos donde el título no dice nada.
+async function captureFromWindow() {
+  const w = await captureWindow();
+  const estado = w.active ? '🟢' : '💤';
+  const detalle = w.active ? '' : ` (inactivo ${w.idleSeconds}s)`;
+  console.log(`${estado}  ${w.app} — ${w.task}${detalle}`);
+  saveSnapshot({
+    captured_at: w.capturedAt,
+    screenshot: null,
+    app: w.app,
+    task: w.task,
+    productive: w.active ? 1 : 0,
+    confidence: 1,
+    raw_analysis: null,
+    idle_seconds: w.idleSeconds,
+    source: 'window',
+  });
+}
+
+async function captureFromVision() {
+  const { base64, mediaType, capturedAt } = await captureScreen();
+  console.log('🤖  Analizando con Claude Vision...');
+  const a = await analyzeScreenshot({ base64, mediaType });
+  if (!a) {
+    console.warn('⏭️   Captura descartada: mejor un hueco que una fila falsa.');
+    return;
+  }
+  console.log(`${a.productive ? '✅' : '🎮'}  ${a.app} — ${a.task} (${Math.round(a.confidence * 100)}%)`);
+  saveSnapshot({
+    captured_at: capturedAt,
+    screenshot: null,
+    app: a.app || 'Unknown',
+    task: a.task || 'Unknown',
+    productive: a.productive ? 1 : 0,
+    confidence: a.confidence || 0,
+    raw_analysis: a.rawAnalysis || null,
+    source: 'vision',
+  });
+}
 
 async function runCapture() {
   console.log(`\n🔄  [${new Date().toLocaleTimeString()}] Capturando...`);
   try {
-    const { base64, mediaType, capturedAt } = await captureScreen();
-    console.log('🤖  Analizando con Claude Vision...');
-    const a = await analyzeScreenshot({ base64, mediaType });
-    console.log(`${a.productive ? '✅' : '🎮'}  ${a.app} — ${a.task} (${Math.round(a.confidence * 100)}%)`);
-    saveSnapshot({
-      captured_at: capturedAt,
-      screenshot: null,
-      app: a.app || 'Unknown',
-      task: a.task || 'Unknown',
-      productive: a.productive ? 1 : 0,
-      confidence: a.confidence || 0,
-      raw_analysis: a.rawAnalysis || null,
-    });
+    if (CAPTURE_MODE === 'vision') await captureFromVision();
+    else await captureFromWindow();
     console.log('💾  Guardado.');
   } catch (err) {
     console.error('❌  Error en ciclo:', err.message);
@@ -44,7 +76,7 @@ async function runReport() {
 console.log('\n╔══════════════════════════════════════╗');
 console.log('║      🖥️  Screen Tracker Iniciado      ║');
 console.log('╚══════════════════════════════════════╝');
-console.log(`📸  Captura cada ${INTERVAL} min | 📊  Reporte a las ${REPORT_HOUR}:00\n`);
+console.log(`📸  Captura cada ${INTERVAL} min (modo: ${CAPTURE_MODE}) | 📊  Reporte a las ${REPORT_HOUR}:00\n`);
 
 await runCapture();
 cron.schedule(`*/${INTERVAL} * * * *`, runCapture);
